@@ -1,0 +1,22 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [{
+        "Sid": "VisualEditor0",
+        "Effect": "Allow",
+        "Action": [
+            "elasticloadbalancing:DescribeLoadBalancers",
+            "logs:CreateLogStream",
+            "autoscaling-plans:DescribeScalingPlans",
+            "autoscaling-plans:UpdateScalingPlan",
+            "ec2:DescribeTags",
+            "elasticloadbalancing:DescribeTargetHealth",
+            "elasticloadbalancing:DescribeTargetGroups",
+            "elasticloadbalancing:DeregisterTargets",
+            "elasticloadbalancing:DescribeInstanceHealth",
+            "autoscaling-plans:DescribeScalingPlanResources",
+            "logs:PutLogEvents",
+            "logs:CreateLogGroup"
+        ],
+        "Resource": "*"
+    }]
+}
