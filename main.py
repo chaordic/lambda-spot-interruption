@@ -45,63 +45,83 @@ def resizeAsg(asgclient, asgName):
         raise ValueTooBig
 
 
-def findTg(elbv2client, elbclient, instanceId):
+def findTg(elbv2client, elbclient, currentAsg, instanceId):
     try:
-        # Searching ELBv2
-        allTGs = elbv2client.describe_target_groups()
+        tgs = asgclient.describe_load_balancer_target_groups(
+            AutoScalingGroupName=currentAsg)['LoadBalancerTargetGroups']
 
-        for tg in allTGs['TargetGroups']:
-            tgArn = tg['TargetGroupArn']
-            tgName = tg['TargetGroupName']
-            tgHealth = elbv2client.describe_target_health(TargetGroupArn=tgArn)
+        if len(tgs) == 0:
+            # Searching Classic LB
+            allLBs = elbclient.describe_load_balancers()
 
-            for instance in tgHealth['TargetHealthDescriptions']:
-                if instance['Target']['Id'] == instanceId:
-                    print("Found TG {}".format(tgName))
-                    return tgArn, tgName
+            for lb in allLBs['LoadBalancerDescriptions']:
+                for instance in lb['Instances']:
+                    if instance['InstanceId'] == instanceId:
+                        print("Found Classic LB {}".format(lb))
+                        return 'elb', lb['LoadBalancerName']
+        else:
+            # Searching ELBv2
+            for tg in tgs:
+                tgArn = tg['LoadBalancerTargetGroupArn']
+                #tgName = tg['TargetGroupName']
+                tgHealth = elbv2client.describe_target_health(
+                    TargetGroupArn=tgArn)
 
-        # Searching Classic LB
-        allLBs = elbclient.describe_load_balancers()
+                for instance in tgHealth['TargetHealthDescriptions']:
+                    if instance['Target']['Id'] == instanceId:
+                        print("Found TG {}".format(tgArn))
+                        return 'elbv2', tgArn
 
-        for lb in allLBs['LoadBalancerDescriptions']:
-            for instance in lb['Instances']:
-                if instance['InstanceId'] == instanceId:
-                    print("Found Classic LB {}".format(lb))
-                    return None, lb['LoadBalancerName']
         raise ValueNotFound
     except ValueNotFound:
         raise ValueNotFound
 
 
-def drainFromLb(elbv2client, elbclient, instanceId):
+def drainFromLb(elbv2client, elbclient, ec2client, instanceId):
     try:
-        tgArn, tgName = findTg(elbv2client, elbclient, instanceId)
+        currentAsg = getCurrentAsg(ec2client, instanceId)
+        elbType, resourceId = findTg(elbv2client, elbclient, currentAsg,
+                                     instanceId)
 
         # Application LB
-        if tgArn != None:
-            print("Draining instance {} on TG {}".format(instanceId, tgName))
-
+        if elbType == 'elbv2':
             # drain from the target group
             deregisterTargets = elbv2client.deregister_targets(
-                TargetGroupArn=tgArn, Targets=[{
+                TargetGroupArn=resourceId, Targets=[{
                     'Id': instanceId
                 }])
 
-            return tgName
+            return 'ELBv2', resourceId
 
         # Classic LB
-        elif tgName != None:
-            print("Draining instance {} on LB {}".format(instanceId, tgName))
-
+        elif elbType == 'elb':
             # drain from the LB
             elbclient.deregister_instances_from_load_balancer(
-                LoadBalancerName=tgName, Instances=[instanceId])
+                LoadBalancerName=resourceId, Instances=[instanceId])
 
-            return tgName
+            return 'ELB Classic', resourceId
 
         else:
             raise ValueNotFound
     except ValueNotFound:
+        raise ValueNotFound
+
+
+def getCurrentAsg(ec2client, instanceId):
+    try:
+        # get the ASG that we should increase
+        currentAsg = ec2client.describe_tags(
+            Filters=[{
+                'Name': 'resource-id',
+                'Values': [instanceId],
+                'Name': 'key',
+                'Values': ['aws:autoscaling:groupName']
+            }])['Tags'][0]['Value']
+
+        print("Found current ASG tag {}".format(currentAsg))
+        return currentAsg
+
+    except:
         raise ValueNotFound
 
 
@@ -124,6 +144,7 @@ def getDesiredAsg(ec2client, instanceId):
 
 def assumeRole(account, role):
     arn = "arn:aws:iam::{}:role/{}".format(account, role)
+    print("Trying to assume role {}".format(arn))
     try:
         stsclient = boto3.client('sts')
         assumed_role_object = stsclient.assume_role(
@@ -134,6 +155,7 @@ def assumeRole(account, role):
             aws_secret_access_key=credentials['SecretAccessKey'],
             aws_session_token=credentials['SessionToken'])
 
+        print("Successfully assumed role")
         return session
     except:
         raise
@@ -159,12 +181,15 @@ def handler(event, context):
         elbv2client = session.client('elbv2')
         elbclient = session.client('elb')
 
-        targetTg = drainFromLb(elbv2client, elbclient, instanceId)
+        elbType, resourceId = drainFromLb(elbv2client, elbclient, ec2client,
+                                          instanceId)
     except ValueNotFound:
-        errMsg = "Unable to find a TG with instance id: {}".format(instanceId)
+        errMsg = "Unable to find a {} with instance id: {}".format(
+            elbType, instanceId)
         print(errMsg)
     else:
-        print("Draining instance {} from TG {}".format(instanceId, targetTg))
+        print("Draining instance {} from {} {}".format(instanceId, elbType,
+                                                       resourceId))
 
     # find the desired ASG to resize
     try:
