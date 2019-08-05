@@ -4,18 +4,21 @@
         "Sid": "VisualEditor0",
         "Effect": "Allow",
         "Action": [
+            "autoscaling:DescribeAutoScalingInstances",
+            "autoscaling:SetDesiredCapacity",
+            "ec2:DescribeTags",
+            "autoscaling:DescribeTags",
+            "elasticloadbalancing:DeregisterTargets",
+            "autoscaling:DescribeLoadBalancers",
+            "logs:CreateLogGroup",
+            "logs:PutLogEvents",
             "elasticloadbalancing:DescribeLoadBalancers",
             "logs:CreateLogStream",
-            "autoscaling-plans:DescribeScalingPlans",
-            "autoscaling-plans:UpdateScalingPlan",
-            "ec2:DescribeTags",
+            "autoscaling:DescribeAutoScalingGroups",
             "elasticloadbalancing:DescribeTargetHealth",
+            "autoscaling:UpdateAutoScalingGroup",
             "elasticloadbalancing:DescribeTargetGroups",
-            "elasticloadbalancing:DeregisterTargets",
-            "elasticloadbalancing:DescribeInstanceHealth",
-            "autoscaling-plans:DescribeScalingPlanResources",
-            "logs:PutLogEvents",
-            "logs:CreateLogGroup"
+            "elasticloadbalancing:DescribeInstanceHealth"
         ],
         "Resource": "*"
     }]
