@@ -16,8 +16,9 @@
             "logs:CreateLogStream",
             "autoscaling:DescribeAutoScalingGroups",
             "elasticloadbalancing:DescribeTargetHealth",
-            "autoscaling:UpdateAutoScalingGroup",
             "elasticloadbalancing:DescribeTargetGroups",
+            "autoscaling:UpdateAutoScalingGroup",
+            "autoscaling:DescribeLoadBalancerTargetGroups",
             "elasticloadbalancing:DescribeInstanceHealth"
         ],
         "Resource": "*"
