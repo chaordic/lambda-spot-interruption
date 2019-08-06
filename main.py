@@ -114,7 +114,8 @@ def getCurrentAsg(ec2client, instanceId):
         currentAsg = ec2client.describe_tags(
             Filters=[{
                 'Name': 'resource-id',
-                'Values': [instanceId],
+                'Values': [instanceId]
+            }, {
                 'Name': 'key',
                 'Values': ['aws:autoscaling:groupName']
             }])['Tags'][0]['Value']
