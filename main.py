@@ -133,7 +133,8 @@ def getDesiredAsg(ec2client, instanceId):
         # get the ASG that we should increase
         targetAsg = ec2client.describe_tags(Filters=[{
             'Name': 'resource-id',
-            'Values': [instanceId],
+            'Values': [instanceId]
+        }, {
             'Name': 'key',
             'Values': ['asgOnDemand']
         }])['Tags'][0]['Value']
@@ -164,7 +165,7 @@ def assumeRole(account, role, session):
         raise
 
 
-def handler(event, session=boto3):
+def handler(event, context, session=boto3):
     instanceId = event['detail']['instance-id']
     accountNumber = event['account']
     region = event['region']
@@ -222,4 +223,4 @@ if __name__ == '__main__':
         account = os.environ['ACCOUNT']
         roleName = os.environ['ROLE_NAME']
         session = assumeRole(account, roleName + '-assume', boto3)
-        handler(data, session)
+        handler(data, None, session)
