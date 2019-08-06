@@ -63,7 +63,7 @@ def findTg(elbv2client, elbclient, asgclient, currentAsg, instanceId):
         else:
             # Searching ELBv2
             for tg in tgs:
-                tgArn = tg['LoadBalancerTargetGroupArn']
+                tgArn = tg['LoadBalancerTargetGroupARN']
                 #tgName = tg['TargetGroupName']
                 tgHealth = elbv2client.describe_target_health(
                     TargetGroupArn=tgArn)
