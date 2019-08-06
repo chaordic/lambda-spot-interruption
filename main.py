@@ -45,7 +45,7 @@ def resizeAsg(asgclient, asgName):
         raise ValueTooBig
 
 
-def findTg(elbv2client, elbclient, currentAsg, instanceId):
+def findTg(elbv2client, elbclient, asgclient, currentAsg, instanceId):
     try:
         tgs = asgclient.describe_load_balancer_target_groups(
             AutoScalingGroupName=currentAsg)['LoadBalancerTargetGroups']
@@ -77,11 +77,11 @@ def findTg(elbv2client, elbclient, currentAsg, instanceId):
         raise ValueNotFound
 
 
-def drainFromLb(elbv2client, elbclient, ec2client, instanceId):
+def drainFromLb(elbv2client, elbclient, ec2client, asgclient, instanceId):
     try:
         currentAsg = getCurrentAsg(ec2client, instanceId)
-        elbType, resourceId = findTg(elbv2client, elbclient, currentAsg,
-                                     instanceId)
+        elbType, resourceId = findTg(elbv2client, elbclient, asgclient,
+                                     currentAsg, instanceId)
 
         # Application LB
         if elbType == 'elbv2':
@@ -118,7 +118,8 @@ def getCurrentAsg(ec2client, instanceId):
                 'Values': ['aws:autoscaling:groupName']
             }])['Tags'][0]['Value']
 
-        print("Found current ASG tag {}".format(currentAsg))
+        print("Found current ASG tag {} for instance {}".format(
+            currentAsg, instanceId))
         return currentAsg
 
     except:
@@ -142,15 +143,15 @@ def getDesiredAsg(ec2client, instanceId):
         raise ValueNotFound
 
 
-def assumeRole(account, role):
+def assumeRole(account, role, session):
     arn = "arn:aws:iam::{}:role/{}".format(account, role)
     print("Trying to assume role {}".format(arn))
     try:
-        stsclient = boto3.client('sts')
+        stsclient = session.client('sts')
         assumed_role_object = stsclient.assume_role(
             RoleArn=arn, RoleSessionName='AssumeRoleACM')
         credentials = assumed_role_object['Credentials']
-        session = boto3.session.Session(
+        session = session.session.Session(
             aws_access_key_id=credentials['AccessKeyId'],
             aws_secret_access_key=credentials['SecretAccessKey'],
             aws_session_token=credentials['SessionToken'])
@@ -161,16 +162,16 @@ def assumeRole(account, role):
         raise
 
 
-def handler(event, context):
+def handler(event, session=boto3):
     instanceId = event['detail']['instance-id']
     accountNumber = event['account']
     region = event['region']
     roleName = os.environ['ROLE_NAME']
 
     try:
-        session = assumeRole(accountNumber, roleName)
-    except:
-        print("Failed to assume role")
+        session = assumeRole(accountNumber, roleName, session)
+    except Exception as e:
+        print("Failed to assume role. {}".format(e))
         return
 
     print("Instance {} in account {} in region {} is going down".format(
@@ -180,12 +181,13 @@ def handler(event, context):
     try:
         elbv2client = session.client('elbv2')
         elbclient = session.client('elb')
+        ec2client = session.client('ec2')
+        asgclient = session.client('autoscaling')
 
         elbType, resourceId = drainFromLb(elbv2client, elbclient, ec2client,
-                                          instanceId)
+                                          asgclient, instanceId)
     except ValueNotFound:
-        errMsg = "Unable to find a {} with instance id: {}".format(
-            elbType, instanceId)
+        errMsg = "Unable to find a LB with instance id: {}".format(instanceId)
         print(errMsg)
     else:
         print("Draining instance {} from {} {}".format(instanceId, elbType,
@@ -193,8 +195,6 @@ def handler(event, context):
 
     # find the desired ASG to resize
     try:
-        ec2client = session.client('ec2')
-
         targetAsg = getDesiredAsg(ec2client, instanceId)
 
     except ValueNotFound:
@@ -205,8 +205,6 @@ def handler(event, context):
 
     # increase ASG size
     try:
-        asgclient = session.client('autoscaling')
-
         resizeAsg(asgclient, targetAsg)
     except ValueTooBig:
         print(
@@ -219,4 +217,7 @@ def handler(event, context):
 if __name__ == '__main__':
     with open('event.json') as f:
         data = json.load(f)
-        handler(data, None)
+        account = os.environ['ACCOUNT']
+        roleName = os.environ['ROLE_NAME']
+        session = assumeRole(account, roleName + '-assume', boto3)
+        handler(data, session)
