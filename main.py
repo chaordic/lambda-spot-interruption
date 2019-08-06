@@ -32,7 +32,8 @@ def resizeAsg(asgclient, asgName):
             raise ValueTooBig
 
         print("Resizing ASG {} to desired capacity {}".format(
-            targetAsg['AutoScalingGroupName'], targetAsg['DesiredCapacity']))
+            targetAsg['AutoScalingGroupName'],
+            int(targetAsg['DesiredCapacity']) + 1))
 
         # increase desired capacity
         targetAsg['DesiredCapacity'] = targetAsg['DesiredCapacity'] + 1
