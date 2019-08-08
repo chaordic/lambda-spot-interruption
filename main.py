@@ -58,7 +58,8 @@ def findTg(elbv2client, elbclient, asgclient, currentAsg, instanceId):
             for lb in allLBs['LoadBalancerDescriptions']:
                 for instance in lb['Instances']:
                     if instance['InstanceId'] == instanceId:
-                        print("Found Classic LB {}".format(lb))
+                        print("Found Classic LB {}".format(
+                            lb['LoadBalancerName']))
                         return 'elb', lb['LoadBalancerName']
         else:
             # Searching ELBv2
@@ -98,7 +99,10 @@ def drainFromLb(elbv2client, elbclient, ec2client, asgclient, instanceId):
         elif elbType == 'elb':
             # drain from the LB
             elbclient.deregister_instances_from_load_balancer(
-                LoadBalancerName=resourceId, Instances=[instanceId])
+                LoadBalancerName=resourceId,
+                Instances=[{
+                    'InstanceId': instanceId
+                }])
 
             return 'ELB Classic', resourceId
 
