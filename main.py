@@ -2,6 +2,7 @@
 import json
 import boto3
 import os
+import re
 
 
 # define Python user-defined exceptions
@@ -20,14 +21,27 @@ class ValueTooBig(Error):
     pass
 
 
-def resizeAsg(asgclient, asgName):
+def resizeAsg(asgclient, asgName, asgOpts):
     try:
         # get target ASG
         targetAsg = asgclient.describe_auto_scaling_groups(
             AutoScalingGroupNames=[asgName])['AutoScalingGroups'][0]
 
+        # get all options, if any
+        opts = re.findall(r'[\w:]+\s*=\s*[\w:]+', ';'.join(asgOpts))
+
+        # partition each match at '='
+        opts = [m.split('=', 1) for m in opts]
+
+        # convert to dictionary
+        d = dict(opts)
+
+        # check if DesiredCapacity is bigger than the MaxDesired custom tag, if it
+        # does not exists than check with ASG MaxSize
+        maxSize = d.get('MaxDesired', targetAsg['MaxSize'])
+
         # error if we are already at max capacity
-        if targetAsg['DesiredCapacity'] >= targetAsg['MaxSize']:
+        if targetAsg['DesiredCapacity'] >= maxSize:
             print("Auto scaling group already at max size!")
             raise ValueTooBig
 
@@ -143,8 +157,10 @@ def getDesiredAsg(ec2client, instanceId):
             'Values': ['asgOnDemand']
         }])['Tags'][0]['Value']
 
-        print("Found ASG tag {}".format(targetAsg))
-        return targetAsg
+        targetAsgName, *targetAsgOpts = targetAsg.split(';')
+        print("Found ASG tag {} with options {}".format(
+            targetAsgName, targetAsgOpts))
+        return targetAsgName, targetAsgOpts
 
     except:
         raise ValueNotFound
@@ -202,7 +218,7 @@ def handler(event, context, session=boto3):
 
     # find the desired ASG to resize
     try:
-        targetAsg = getDesiredAsg(ec2client, instanceId)
+        targetAsgName, targetAsgOpts = getDesiredAsg(ec2client, instanceId)
 
     except ValueNotFound:
         errMsg = "Unable to describe tags or find the desired ASG for instance id: {}".format(
@@ -212,7 +228,7 @@ def handler(event, context, session=boto3):
 
     # increase ASG size
     try:
-        resizeAsg(asgclient, targetAsg)
+        resizeAsg(asgclient, targetAsgName, targetAsgOpts)
     except ValueTooBig:
         print(
             "Unable to resize auto scaling group {}, already at max capacity".
