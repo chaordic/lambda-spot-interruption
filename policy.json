@@ -19,7 +19,8 @@
             "elasticloadbalancing:DescribeTargetGroups",
             "autoscaling:UpdateAutoScalingGroup",
             "autoscaling:DescribeLoadBalancerTargetGroups",
-            "elasticloadbalancing:DescribeInstanceHealth"
+            "elasticloadbalancing:DescribeInstanceHealth",
+            "elasticloadbalancing:DeregisterInstancesFromLoadBalancer"
         ],
         "Resource": "*"
     }]
