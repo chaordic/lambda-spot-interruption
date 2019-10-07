@@ -71,6 +71,19 @@ Configuration is done through environment variables defined inside the Makefile
 | ZIP\_FILE    	    | Name of the compressed environment file                                           	| Optional    	| lambda-spot-interruption.zip                                  |
 | MEMORY\_SIZE	    | Maximum memory available to the lambda function                                   	| Optional    	| 192                     	                                    |
 
+Tags that can be configured in the ASG:
+
+| Variable   	    | Description                                                                       	            | Requirement 	| Default Value           	                                    |
+|---------------	|-------------------------------------------------------------------------------------------------- |-------------	|-------------------------------------------------------------	|
+| asgOnDemand       | Name of the on demand ASG to be increased, add `; MaxDesired=n` to limit the max size of the ASG  | Optional      | 
+
+##### Limiting the ASG size
+If we have a ASG named `api-od` with a max size of 10 but we don't want the lambda function to increase the desired number above 5, we can
+configure the `asgOnDemand` of the spot instance as following:
+`asgOnDemand = api-od; MaxDesired=5`
+
+This way the lambda function will not add instances to the ASG if the desired is bigger than 5.
+
 #### Create an isolated environment
 
 `make dependencies`
