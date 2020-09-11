@@ -12,6 +12,8 @@ TAGS :=
 ROLE_NAME :=
 ENV_VARS := "{ROLE_NAME=$(ROLE_NAME)}"
 CUSTOM_ARGS :=
+VPC_SUBNETS := "subnet-42d39634"
+VPC_SGS := "sg-0f11a9dd10098e54f"
 
 PKG_FILE := "$(shell pwd)/$(ZIP_FILE)"
 REQUIRED_BINS := python3.7 pip3.7
@@ -38,8 +40,10 @@ dependencies:
 pack:
 	( \
 		rm -rf $(PKG_FILE); \
-		cd venv/lib/python3.7/site-packages/; \
-		zip -r9 ../../../../$(ZIP_FILE) .; \
+		mkdir -p package; \
+		cat requirements.txt | grep -v boto | xargs pip$(RUNTIME_VERSION) install --upgrade --target ./package ; \
+		cd package/; \
+		zip -r9 ../$(ZIP_FILE) .; \
 		cd -; \
 		zip -g $(ZIP_FILE) main.py; \
 	)
@@ -58,6 +62,7 @@ create-function:
 	--runtime $(RUNTIME) \
 	--timeout $(TIMEOUT) \
 	--memory-size $(MEMORY_SIZE) \
+	--vpc-config SubnetIds=$(VPC_SUBNETS),SecurityGroupIds=$(VPC_SGS) \
 	--environment Variables=$(ENV_VARS) $(CUSTOM_ARGS)
 	#--environment Variables=$(ENV_VARS) $(CUSTOM_ARGS)
 
