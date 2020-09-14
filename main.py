@@ -112,7 +112,7 @@ class Spot():
         }])
         try:
             targetAsg = tags['Tags'][0]['Value']
-        except KeyError:
+        except (KeyError, IndexError):
             self.metric(name='fail', reason='missing target asg')
             return None, None, None
 
