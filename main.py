@@ -195,6 +195,7 @@ class Spot():
             print(
                 f"Current: {self.target_asg['DesiredCapacity']}\nMax: {maxSize}"
             )
+            self.metric(name='fail', reason='Already at max size')
             return False
 
         self.target_asg['DesiredCapacity'] += count
