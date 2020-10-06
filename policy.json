@@ -5,6 +5,7 @@
         "Effect": "Allow",
         "Action": [
             "autoscaling:DescribeAutoScalingInstances",
+            "cloudwatch:PutMetricData",
             "autoscaling:SetDesiredCapacity",
             "ec2:DescribeTags",
             "autoscaling:DescribeTags",
