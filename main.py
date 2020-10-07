@@ -21,13 +21,14 @@ class Spot():
         self.region = region
         self.instance_id = instance_id
 
+        self.cw = boto3.client('cloudwatch')
+
         self.session = self.assume_role(session)
 
         self.alb = self.session.client('elbv2')
         self.elb = self.session.client('elb')
         self.ec2 = self.session.client('ec2')
         self.asg = self.session.client('autoscaling')
-        self.cw = self.session.client('cloudwatch')
 
         self.current_asg = self.get_current_asg()
 
