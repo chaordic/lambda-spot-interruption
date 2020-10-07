@@ -14,12 +14,14 @@ class Spot():
                  region,
                  role_name,
                  instance_id,
-                 agg_gw,
+                 metrics_namespace,
                  session=boto3):
         self.account_id = account_id
         self.role_name = role_name
         self.region = region
         self.instance_id = instance_id
+
+        self.cw = boto3.client('cloudwatch')
 
         self.session = self.assume_role(session)
 
@@ -37,33 +39,35 @@ class Spot():
         )
         self.lb_type, self.resource_id = self.find_tg()
 
-        self.agg_gw = agg_gw
+        self.metrics_namespace = metrics_namespace
         self.prefix = 'lambda_spot_interruption_'
 
         self.metric(name='termination', reason='termination')
 
-    def metric(self, name, reason, extra_labels=None, value=1):
-        if self.agg_gw is None:
+    def metric(self, name, reason, value=1):
+        if self.metrics_namespace is None:
             return
 
-        if self.resource_id is None:
-            tg_name = 'could not find'
-        else:
-            tg_name = self.resource_id.split('/')[1]
-
-        labels = f'account_id="{self.account_id}",asg="{self.current_asg}",lb_type="{self.lb_type}",tg="{tg_name}",reason="{reason}"'
-        if extra_labels is not None:
-            labels += f',{extra_labels}'
-
-        metric = f"{self.prefix}{name}{{{labels}}} {value}\n"
-        try:
-            req = requests.post(
-                self.agg_gw,
-                data=metric,
-                headers={'Content-Type': 'text/xml'},
-                timeout=2)
-        except Timeout:
-            print('Timed out while trying to post metrics!')
+        self.cw.put_metric_data(
+            Namespace=self.metrics_namespace,
+            MetricData=[{
+                'MetricName':
+                name,
+                'Value':
+                value,
+                'Unit':
+                'Count',
+                'Dimensions': [{
+                    'Name': 'AutoScaleGroup',
+                    'Value': self.current_asg
+                }, {
+                    'Name': 'AccountID',
+                    'Value': self.account_id
+                }, {
+                    'Name': 'Status',
+                    'Value': reason
+                }]
+            }])
 
     def assume_role(self, session):
         arn = f"arn:aws:iam::{self.account_id}:role/{self.role_name}"
@@ -216,15 +220,15 @@ def handler(event, context):
     account_id = event['account']
     region = event['region']
     role_name = os.environ['ROLE_NAME']
-    agg_gw = os.getenv('AGG_GW',
-                       None)  # weaveworks prom-aggregation-gateway endpoint
+    metrics_namespace = os.getenv('CW_METRICS_NAMESPACE', None)
 
     print(
         f"Instance {instance_id} in account {account_id} in region {region} is going down"
     )
 
     try:
-        spot = Spot(account_id, region, role_name, instance_id, agg_gw)
+        spot = Spot(account_id, region, role_name, instance_id,
+                    metrics_namespace)
 
         # Drain the target group or load balancer if configured
         spot.drain_from_lb()
