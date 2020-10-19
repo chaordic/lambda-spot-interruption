@@ -30,23 +30,27 @@ class Spot():
         self.ec2 = self.session.client('ec2')
         self.asg = self.session.client('autoscaling')
 
-        self.current_asg = self.get_current_asg()
+        self.metrics_namespace = metrics_namespace
+        self.prefix = 'lambda_spot_interruption_'
 
-        if self.current_asg is None:
-            raise ValueError
+        self.instance_name, self.current_asg = self.get_current_asg()
 
         self.target_asg_name, self.target_asg_opts, self.target_asg = self.get_desired_asg(
         )
         self.lb_type, self.resource_id = self.find_tg()
-
-        self.metrics_namespace = metrics_namespace
-        self.prefix = 'lambda_spot_interruption_'
 
         self.metric(name='termination', reason='termination')
 
     def metric(self, name, reason, value=1):
         if self.metrics_namespace is None:
             return
+
+        if self.current_asg is None:
+            metric_name = 'InstanceName'
+            metric_value = self.instance_name
+        else:
+            metric_name = 'AutoScaleGroup'
+            metric_value = self.current_asg
 
         self.cw.put_metric_data(
             Namespace=self.metrics_namespace,
@@ -58,8 +62,8 @@ class Spot():
                 'Unit':
                 'Count',
                 'Dimensions': [{
-                    'Name': 'AutoScaleGroup',
-                    'Value': self.current_asg
+                    'Name': metric_name,
+                    'Value': metric_value
                 }, {
                     'Name': 'AccountID',
                     'Value': self.account_id
@@ -88,35 +92,30 @@ class Spot():
         return session
 
     def get_current_asg(self):
-        try:
-            current_asg = self.ec2.describe_tags(
-                Filters=[{
-                    'Name': 'resource-id',
-                    'Values': [self.instance_id]
-                }, {
-                    'Name': 'key',
-                    'Values': ['aws:autoscaling:groupName']
-                }])['Tags'][0]['Value']
-        except IndexError:
-            print(f"Could not find ASG for instance {self.instance_id}")
-            return None
+        self.tags = self.ec2.describe_tags(
+            Filters=[{
+                'Name': 'resource-id',
+                'Values': [self.instance_id]
+            }])['Tags']
 
-        print(
-            f"Found current ASG tag {current_asg} for instance {self.instance_id}"
-        )
-        return current_asg
+        self.current_asg = next((tag['Value'] for tag in self.tags
+                                 if tag['Key'] == 'aws:autoscaling:groupName'),
+                                None)
+        self.instance_name = next(
+            (tag['Value'] for tag in self.tags if tag['Key'] == 'Name'), None)
+
+        if self.current_asg is None:
+            print(f"Could not find ASG for instance {self.instance_id}")
+            self.metric(name='fail', reason='Could not find ASG')
+
+        return self.instance_name, self.current_asg
 
     def get_desired_asg(self):
-        tags = self.ec2.describe_tags(Filters=[{
-            'Name': 'resource-id',
-            'Values': [self.instance_id]
-        }, {
-            'Name': 'key',
-            'Values': ['asgOnDemand']
-        }])
-        try:
-            targetAsg = tags['Tags'][0]['Value']
-        except (KeyError, IndexError):
+        targetAsg = next(
+            (tag['Value'] for tag in self.tags if tag['Key'] == 'asgOnDemand'),
+            None)
+
+        if targetAsg is None:
             self.metric(name='fail', reason='missing target asg')
             return None, None, None
 
@@ -129,6 +128,9 @@ class Spot():
         return target_asg_name, target_asg_opts, target_asg
 
     def find_tg(self):
+        if self.current_asg is None:
+            return None, None
+
         tgs = self.asg.describe_load_balancer_target_groups(
             AutoScalingGroupName=self.current_asg)['LoadBalancerTargetGroups']
 
@@ -226,25 +228,19 @@ def handler(event, context):
         f"Instance {instance_id} in account {account_id} in region {region} is going down"
     )
 
-    try:
-        spot = Spot(account_id, region, role_name, instance_id,
-                    metrics_namespace)
+    spot = Spot(account_id, region, role_name, instance_id, metrics_namespace)
 
-        # Drain the target group or load balancer if configured
-        spot.drain_from_lb()
+    # Drain the target group or load balancer if configured
+    spot.drain_from_lb()
 
-        if spot.target_asg_name is None:
-            print(
-                f"Unable to describe tags or find the desired ASG for instance id: {instance_id}"
-            )
-            return
-
-        # increase ASG size
-        spot.resize_asg()
-
-    except ValueError:
-        # could not even find the current asg, aborting
+    if spot.target_asg_name is None:
+        print(
+            f"Unable to describe tags or find the desired ASG for instance id: {instance_id}"
+        )
         return
+
+    # increase ASG size
+    spot.resize_asg()
 
 
 # simulate the event locally
